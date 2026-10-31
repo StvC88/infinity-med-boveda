@@ -156,5 +156,31 @@ class ReleaseSecurity(unittest.TestCase):
         with patch.object(t,'file_digest',side_effect=AssertionError('No acceder ni borrar objetos')):
             with self.assertRaises(t.VaultError):self.v.cleanup_previous(PASSWORD,True)
 
+    @unittest.skipUnless(os.name=='nt','Junction nativa Windows')
+    def test_junction_cannot_redirect_registered_partial_cleanup(self):
+        real=self.root/'real';real.mkdir()
+        witness=real/'.tblocal-abcdefgh.partial';witness.write_bytes(b'conservar')
+        link=self.root/'junction'
+        result=subprocess.run(['cmd.exe','/d','/c','mklink','/J',str(link),str(real)],capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+        try:
+            journal=RecoveryHistory(self.root/'state')
+            with self.assertRaises((OSError,t.VaultError)):journal.record(link/witness.name,self.repo)
+            self.assertEqual(witness.read_bytes(),b'conservar')
+        finally:
+            link.rmdir() # Retira sólo el enlace creado por esta prueba, nunca su destino.
+
+    @unittest.skipUnless(os.name=='nt','Symlink nativo Windows')
+    def test_symlink_source_is_rejected_when_privilege_available(self):
+        source=self.root/'real.txt';source.write_bytes(b'conservar')
+        link=self.root/'enlace.txt'
+        try:link.symlink_to(source)
+        except OSError as exc:
+            if getattr(exc,'winerror',None)==1314:self.skipTest('El entorno no permite crear symlinks (1314)')
+            raise
+        with self.assertRaises((OSError,t.VaultError)):self.v.add(link,self.stage)
+        self.assertEqual(source.read_bytes(),b'conservar')
+        self.assertEqual(self.v.entries(),[])
+
 
 if __name__=='__main__':unittest.main(verbosity=2)
