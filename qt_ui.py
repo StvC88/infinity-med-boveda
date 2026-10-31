@@ -583,7 +583,7 @@ class Window(QWidget):
         dest = QFileDialog.getExistingDirectory(self, "Bóveda nueva: carpeta vacía y separada")
         if not dest:
             return
-        QMessageBox.information(self, "Rotación completa", "Se volverá a cifrar TODO con una clave independiente y se verificará la copia completa. Necesita tiempo y espacio para ambas bóvedas más el temporal del archivo mayor. La anterior se conserva hasta que elija limpiarla.")
+        QMessageBox.information(self, "Rotación completa", "Se volverá a cifrar TODO con una clave independiente y se verificará la copia completa. Necesita tiempo y espacio para ambas bóvedas más el temporal del archivo mayor. La anterior se conserva; su limpieza automática está deshabilitada.")
         stage = self.staging
         def progress(i, count, done, total):
             self.report(done, total, f"Migrando {i} de {count}")
@@ -629,6 +629,7 @@ def run_gui():
                         new.cleanup_previous("frase sintetica nueva de arranque", True)
                     except VaultError:
                         result['cleanup_disabled']=True
+                    assert result.get('cleanup_disabled') is True
                     assert (base/'old'/'boveda.json').exists()
                     result.update({"crypto_roundtrip": True, "full_rotation": True, "previous_vault_preserved": True})
                 code = 0
@@ -638,4 +639,4 @@ def run_gui():
             Path(target).write_text(json.dumps(result), encoding="utf-8")
             app.exit(code)
         QTimer.singleShot(1500, smoke)
-    app.exec()
+    return app.exec()

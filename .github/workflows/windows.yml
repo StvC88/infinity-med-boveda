@@ -24,6 +24,11 @@ jobs:
           $p = Start-Process -FilePath $exe -ArgumentList @('--smoke-test', $result) -PassThru -WindowStyle Hidden
           if (-not $p.WaitForExit(60000)) { throw 'Executable self-test timeout' }
           if ($p.ExitCode -ne 0) { throw 'Executable self-test failed' }
+          $report = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
+          foreach ($key in @('gui_started','frozen','crypto_roundtrip','full_rotation','cleanup_disabled','previous_vault_preserved')) {
+            if ($report.$key -ne $true) { throw "Missing executable verification: $key" }
+          }
+          if ($report.pointer_bits -ne 64 -or $report.error) { throw 'Invalid executable verification report' }
           Get-Content -LiteralPath $result
       - name: Checksums
         shell: pwsh

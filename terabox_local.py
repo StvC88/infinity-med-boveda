@@ -684,4 +684,4 @@ class Vault:
 
 if __name__ == "__main__":
     from qt_ui import run_gui
-    run_gui()
+    raise SystemExit(run_gui())
