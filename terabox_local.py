@@ -11,6 +11,8 @@ import stat
 import struct
 import tempfile
 import uuid
+from contextlib import contextmanager
+from functools import wraps
 
 from nacl import bindings as sodium
 from nacl import pwhash, utils
@@ -29,6 +31,52 @@ MESSAGE = sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE
 ENTRY = re.compile(r"^[0-9a-f]{32}\.tbe$")
 RECEIPT = "rotacion.tbr"
 MAX_FILES = 10000
+INVENTORY = "inventario.tbi"
+
+
+@contextmanager
+def operation_lock(folder):
+    """Exclusión entre procesos del mismo equipo; no es un bloqueo distribuido."""
+    identity = hashlib.sha256(os.path.normcase(str(safe_path(folder))).encode()).hexdigest()
+    path = Path(tempfile.gettempdir()) / ("infinity-med-" + identity + ".lock")
+    outside(path, safe_path(folder))
+    f = path.open("a+b")
+    locked = False
+    try:
+        f.seek(0, 2)
+        if f.tell() == 0:
+            f.write(b"0")
+            f.flush()
+        f.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            locked = True
+        except OSError as exc:
+            raise VaultError("Otra operación está usando esta bóveda en este equipo.") from exc
+        yield
+    finally:
+        if locked:
+            f.seek(0)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
+def serialized(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with operation_lock(self.folder):
+            return method(self, *args, **kwargs)
+    return wrapped
 
 
 class VaultError(Exception):
@@ -176,9 +224,12 @@ def read_header(folder):
         raise VaultError("Encabezado demasiado grande.")
     try:
         h = json.loads(data)
-        if not isinstance(h, dict) or set(h) != {"version", "vault", "salt", "ops", "mem", "hint", "state", "nonce", "wrapped"}:
+        base_fields = {"version", "vault", "salt", "ops", "mem", "hint", "state", "nonce", "wrapped"}
+        if not isinstance(h, dict) or set(h) != (base_fields | ({"inventory"} if h.get("version") == 2 else set())):
             raise ValueError()
-        if type(h["version"]) is not int or h["version"] != 1 or type(h["ops"]) is not int or h["ops"] != OPS or type(h["mem"]) is not int or h["mem"] != MEM:
+        if type(h["version"]) is not int or h["version"] not in (1, 2) or type(h["ops"]) is not int or h["ops"] != OPS or type(h["mem"]) is not int or h["mem"] != MEM:
+            raise ValueError()
+        if h["version"] == 2 and h["inventory"] != "v1":
             raise ValueError()
         if not isinstance(h["vault"], str) or not re.fullmatch(r"[0-9a-f]{32}", h["vault"]):
             raise ValueError()
@@ -224,13 +275,18 @@ class Vault:
 
     @classmethod
     def create(cls, folder, password, hint, staging, state="ready"):
+        with operation_lock(folder):
+            return cls._create(folder, password, hint, staging, state)
+
+    @classmethod
+    def _create(cls, folder, password, hint, staging, state="ready"):
         folder = safe_path(folder, directory=True)
         if any(folder.iterdir()):
             raise VaultError("Para crear una bóveda use una carpeta vacía.")
         staging = stage_dir(staging, folder)
         if len(hint) > 300:
             raise VaultError("La pista admite hasta 300 caracteres.")
-        h = {"version": 1, "vault": uuid.uuid4().hex, "salt": b64(utils.random(16)), "ops": OPS, "mem": MEM, "hint": hint, "state": state}
+        h = {"version": 2, "inventory": "v1", "vault": uuid.uuid4().hex, "salt": b64(utils.random(16)), "ops": OPS, "mem": MEM, "hint": hint, "state": state}
         key = utils.random(32)
         wrap(h, key, password)
         temp, f = temp_file(staging)
@@ -241,7 +297,9 @@ class Vault:
             publish(temp, folder / HEADER)
         finally:
             temp.unlink(missing_ok=True)
-        return cls(folder, h, key)
+        vault = cls(folder, h, key)
+        vault._write_inventory({}, staging)
+        return vault
 
     @classmethod
     def unlock(cls, folder, password):
@@ -261,6 +319,56 @@ class Vault:
                 if len(names) > MAX_FILES:
                     raise VaultError("El prototipo admite hasta 10 000 archivos por bóveda.")
         return sorted(names)
+
+    def _read_inventory(self):
+        path = safe_path(self.folder / INVENTORY)
+        if not path.exists():
+            if self.header["version"] >= 2:
+                raise VaultError("Falta el inventario requerido. Restaure o sincronice el repositorio completo.")
+            return None  # Compatibilidad v1 anterior: no detecta objetos desaparecidos.
+        with path.open("rb") as f:
+            raw = f.read(2 * 1024 * 1024 + 1)
+        if not 40 <= len(raw) <= 2 * 1024 * 1024:
+            raise VaultError("Inventario fuera de límites.")
+        try:
+            data = json.loads(sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(raw[24:], b"inventory-v1" + bytes.fromhex(self.header["vault"]), raw[:24], self.key))
+            if not isinstance(data, dict) or len(data) > MAX_FILES:
+                raise ValueError()
+            for entry, digest in data.items():
+                if not ENTRY.fullmatch(entry) or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                    raise ValueError()
+            return data
+        except (CryptoError, ValueError, TypeError) as exc:
+            raise VaultError("Inventario alterado o inválido.") from exc
+
+    def _write_inventory(self, records, staging):
+        nonce = utils.random(24)
+        raw = nonce + sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(canonical(records), b"inventory-v1" + bytes.fromhex(self.header["vault"]), nonce, self.key)
+        temp, out = temp_file(staging)
+        try:
+            with out:
+                out.write(raw)
+                sync_file(out)
+            os.replace(temp, self.folder / INVENTORY)
+        finally:
+            temp.unlink(missing_ok=True)
+
+    @serialized
+    def verify(self, progress=None, cancel=None):
+        records = self._read_inventory()
+        entries = self.entries()
+        if records is not None and sorted(records) != entries:
+            raise VaultError("Faltan archivos o hay objetos no registrados. Conserve la bóveda y revise la sincronización; no se eliminará nada.")
+        for i, entry in enumerate(entries):
+            f, state, ad, meta = self.reader(entry)
+            with f:
+                for _ in self.chunks(f, state, ad, meta["size"], cancel):
+                    pass
+            if records is not None and file_digest(self.folder / entry, cancel) != records[entry]:
+                raise VaultError("Un archivo no coincide con el inventario autenticado.")
+            if progress:
+                progress(i + 1, len(entries))
+        return {"files": len(entries), "inventory": records is not None}
 
     def reader(self, entry):
         if not isinstance(entry, str) or not ENTRY.fullmatch(entry):
@@ -313,12 +421,16 @@ class Vault:
             total += len(data)
             yield data
 
+    @serialized
     def encrypt_chunks(self, meta, chunks, staging, progress=None, cancel=None):
         safe_name(meta["name"])
         outside(staging, self.cloud_root)
         if len(self.entries()) >= MAX_FILES:
             raise VaultError("Límite de 10 000 archivos por bóveda alcanzado.")
         staging = stage_dir(staging, self.folder)
+        inventory = self._read_inventory()
+        if inventory is not None and sorted(inventory) != self.entries():
+            raise VaultError("El inventario no coincide: revise archivos faltantes o una operación interrumpida antes de agregar.")
         entry = uuid.uuid4().hex + ".tbe"
         prefix = MAGIC + bytes.fromhex(self.header["vault"]) + bytes.fromhex(entry[:-4])
         state = sodium.crypto_secretstream_xchacha20poly1305_state()
@@ -343,6 +455,9 @@ class Vault:
                 write_frame(out, state, b"", prefix, FINAL)
                 sync_file(out)
             publish(temp, self.folder / entry)
+            if inventory is not None:
+                inventory[entry] = file_digest(self.folder / entry, cancel)
+                self._write_inventory(inventory, staging)
             return entry
         finally:
             temp.unlink(missing_ok=True)
@@ -366,6 +481,7 @@ class Vault:
                     raise VaultError("El archivo cambió mientras se cifraba.")
             return self.encrypt_chunks({"name": source.name, "size": before.st_size}, blocks(), staging, progress, cancel)
 
+    @serialized
     def restore(self, entry, destination, progress=None, cancel=None):
         destination = outside(destination, self.cloud_root)
         safe_path(destination, directory=True)
@@ -392,6 +508,7 @@ class Vault:
             if temp is not None:
                 temp.unlink(missing_ok=True)
 
+    @serialized
     def migrate(self, current_password, new_folder, new_password, hint, staging, progress=None, cancel=None):
         if new_password == current_password:
             raise VaultError("La nueva contraseña debe ser distinta.")
@@ -405,6 +522,9 @@ class Vault:
         outside(staging, self.cloud_root)
         stage_dir(staging, new_folder)
         entries = self.entries()
+        source_inventory = self._read_inventory()
+        if source_inventory is not None and sorted(source_inventory) != entries:
+            raise VaultError("El inventario de origen no coincide. Migración bloqueada.")
         source_header_hash = file_digest(self.folder / HEADER)
         new = Vault.create(new_folder, new_password, hint, staging, "migration-incomplete")
         if inside(new_folder, self.cloud_root):
@@ -417,6 +537,8 @@ class Vault:
                 callback = (lambda done, total: progress(index + 1, len(entries), done, total)) if progress else None
                 digest = hashlib.sha256()
                 source_hash = file_digest(self.folder / entry, cancel)
+                if source_inventory is not None and source_inventory[entry] != source_hash:
+                    raise VaultError("El origen cambió respecto al inventario.")
                 def blocks():
                     for data in self.chunks(f, state, ad, meta["size"], cancel):
                         digest.update(data)
@@ -432,6 +554,8 @@ class Vault:
         verified = Vault.unlock(new.folder, new_password)
         verified.verify_records(records, cancel)
         receipt = {"version": 1, "source": str(self.folder), "header_hash": source_header_hash, "records": records}
+        if source_inventory is not None:
+            receipt["inventory_hash"] = file_digest(self.folder / INVENTORY)
         receipt_data = canonical(receipt)
         if len(receipt_data) > 32 * 1024 * 1024:
             raise VaultError("Demasiados archivos para el registro de rotación del prototipo.")
@@ -472,6 +596,7 @@ class Vault:
             if digest.hexdigest() != record["plain_hash"]:
                 raise VaultError("Contenido distinto después de la rotación.")
 
+    @serialized
     def cleanup_previous(self, new_password, upload_confirmed=False, cancel=None, deleted_callback=None):
         if not upload_confirmed:
             raise VaultError("Primero compruebe personalmente la subida de la nueva bóveda en TeraBox.")
@@ -489,35 +614,46 @@ class Vault:
         source = safe_path(receipt["source"], directory=True)
         if inside(source, self.folder) or inside(self.folder, source):
             raise VaultError("Ruta de limpieza no válida.")
-        records = receipt["records"]
-        for r in records:
-            if not ENTRY.fullmatch(r["old"]) or not ENTRY.fullmatch(r["new"]):
-                raise VaultError("Identificador peligroso en registro.")
-        # Revalidar TODO el nuevo contenido antes de cualquier borrado antiguo.
-        fresh.verify_records(records, cancel)
-        old_header = source / HEADER
-        if old_header.exists() and file_digest(old_header, cancel) != receipt["header_hash"]:
-            raise VaultError("La identidad de la bóveda anterior cambió; limpieza bloqueada.")
-        for r in records:
-            path = source / r["old"]
-            if path.exists() and file_digest(path, cancel) != r["cipher_hash"]:
-                raise VaultError("Un archivo antiguo cambió; limpieza bloqueada.")
-        for r in records:
+        with operation_lock(source):
+            records = receipt["records"]
+            for r in records:
+                if not ENTRY.fullmatch(r["old"]) or not ENTRY.fullmatch(r["new"]):
+                    raise VaultError("Identificador peligroso en registro.")
+            # Revalidar TODO el nuevo contenido antes de cualquier borrado antiguo.
+            fresh.verify_records(records, cancel)
+            new_inventory = fresh._read_inventory()
+            if new_inventory is not None and sorted(new_inventory) != fresh.entries():
+                raise VaultError("Inventario nuevo no coincide; limpieza bloqueada.")
+            old_header = source / HEADER
+            if old_header.exists() and file_digest(old_header, cancel) != receipt["header_hash"]:
+                raise VaultError("La identidad de la bóveda anterior cambió; limpieza bloqueada.")
+            for r in records:
+                path = source / r["old"]
+                if path.exists() and file_digest(path, cancel) != r["cipher_hash"]:
+                    raise VaultError("Un archivo antiguo cambió; limpieza bloqueada.")
+            old_inventory = source / INVENTORY
+            if "inventory_hash" in receipt and old_inventory.exists() and file_digest(old_inventory, cancel) != receipt["inventory_hash"]:
+                raise VaultError("El inventario anterior cambió; limpieza bloqueada.")
+            for r in records:
+                check_cancel(cancel)
+                path = source / r["old"]
+                if path.exists():
+                    if file_digest(path, cancel) != r["cipher_hash"]:
+                        raise VaultError("Cambió el archivo antes de borrarlo.")
+                    safe_path(path).unlink()  # Sólo archivo enumerado y validado; nunca recursivo.
+                    if deleted_callback:
+                        deleted_callback(path)
             check_cancel(cancel)
-            path = source / r["old"]
-            if path.exists():
-                if file_digest(path, cancel) != r["cipher_hash"]:
-                    raise VaultError("Cambió el archivo antes de borrarlo.")
-                safe_path(path).unlink()  # Sólo archivo enumerado y validado; nunca recursivo.
-                if deleted_callback:
-                    deleted_callback(path)
-        check_cancel(cancel)
-        # Si aparecen nuevas entradas, conservar el encabezado para poder recuperarlas.
-        if old_header.exists() and not any(ENTRY.fullmatch(p.name) for p in source.iterdir()):
-            if file_digest(old_header, cancel) != receipt["header_hash"]:
-                raise VaultError("Cambió el encabezado antiguo.")
-            safe_path(old_header).unlink()
-        return source
+            # Si aparecen nuevas entradas, conservar el encabezado para poder recuperarlas.
+            if old_header.exists() and not any(ENTRY.fullmatch(p.name) for p in source.iterdir()):
+                if file_digest(old_header, cancel) != receipt["header_hash"]:
+                    raise VaultError("Cambió el encabezado antiguo.")
+                if "inventory_hash" in receipt and old_inventory.exists():
+                    if file_digest(old_inventory, cancel) != receipt["inventory_hash"]:
+                        raise VaultError("Cambió el inventario antiguo.")
+                    safe_path(old_inventory).unlink()
+                safe_path(old_header).unlink()
+            return source
 
 
 

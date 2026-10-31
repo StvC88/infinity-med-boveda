@@ -1,0 +1,23 @@
+[
+  {
+    "version": 1,
+    "password": "frase publica de pruebas sinteticas",
+    "name": "vector.txt",
+    "sha256": "3fdd8d157d5319bb477e41b71991723e0c5c816c68891256a00cbf72f7e8821d",
+    "files": {
+      "boveda.json": "eyJoaW50IjoiVkVDVE9SIFBVQkxJQ08gU0lOVEVUSUNPIiwibWVtIjo2NzEwODg2NCwibm9uY2UiOiJhandaUG9yd0llS3BZNlU4SDE2RHROYWptWWUyMS9yUiIsIm9wcyI6Mywic2FsdCI6InFrMmJPZ3A4TXBlZ1RCbXNwejRKOWc9PSIsInN0YXRlIjoicmVhZHkiLCJ2YXVsdCI6IjBmZDhjNjNhZGIwNDQ1ODNiZTdlMjNmZDI5ZmUxYzE0IiwidmVyc2lvbiI6MSwid3JhcHBlZCI6IndyWkMvbzhoWVlPM2FyN2RtTHNOeVhjUUZHVTFsdTNLaCs3bGxWWWxaa0kydGQ0YjBZS2VEcmNDclowenlSODYifQ==",
+      "e6d15d7f6a6b4028a253ef32f8971c38.tbe": "VEJMT0NBTDEP2MY62wRFg75+I/0p/hwU5tFdf2prQCiiU+8y+JccOPRSjSJUAG59NNucIkkh9BkfZOSOnOp1hgAAADBS3c6jxX7pJ7VI4Vqv0HgQWrmdE37NS6tT6+/M9dd3gPMpdqFOW+ZACyPwAj8s2hYAAAA5Hl2Dbo9Tm5PY2IyhHcvAcoISIA7Q8MtuwZF+WmHxAImUFR7Miovstn1OYM7jRIJC+FRPuTkWmflZAAAAERZnpjnD0ARpvtd6PSfrqEMB"
+    }
+  },
+  {
+    "version": 2,
+    "password": "frase publica de pruebas sinteticas",
+    "name": "vector.txt",
+    "sha256": "3fdd8d157d5319bb477e41b71991723e0c5c816c68891256a00cbf72f7e8821d",
+    "files": {
+      "boveda.json": "eyJoaW50IjoiVkVDVE9SIFBVQkxJQ08gU0lOVEVUSUNPIiwiaW52ZW50b3J5IjoidjEiLCJtZW0iOjY3MTA4ODY0LCJub25jZSI6Ilp4MEkxeFgxNjNVNExaYm92Ri9HQVluak1NTFdBVjFiIiwib3BzIjozLCJzYWx0IjoiK3hMY1hNRlcrdzZOYUFzZzF0SU53QT09Iiwic3RhdGUiOiJyZWFkeSIsInZhdWx0IjoiMDc3NGI3MGY1MTc2NDNjMGIwNzRjZjY4ZTViZDliOWMiLCJ2ZXJzaW9uIjoyLCJ3cmFwcGVkIjoiNUw0ZEpZbG9lL1VucUJ5VlkwT01RTmpXbGRRS3hMSmI0aHY2Z0xybXVycjM0MVl6bDlzSFc0TlI2ZG81KzVMVyJ9",
+      "c1146086aaf44aa1bd7ddc4e5abec180.tbe": "VEJMT0NBTDEHdLcPUXZDwLB0z2jlvZucwRRghqr0SqG9fdxOWr7BgBBS+gSVUJ+VCI30EFiVZgtJhQaVofdzMQAAADCJwa2zQLUSoZ8j0C2nLcyZhP1WkCoPIjoXdZ9VMPwddqSUdZZTXyhDHW6eiZVPHgcAAAA5SjUN9JCeD6MlA9yEGEo95tgK+4UMD1+a1cgo+8ptbDY1MWCWMyZMfDnkSnu6bT7uahJT7NJbulfLAAAAESzcH1PlkeE1IEx5g86nD8+w",
+      "inventario.tbi": "thwjTDb7rh9+Hw6k7rbX8FVQB92TSwkxgelNrUctRpVpaJGtRyrNNAhE/Bhdh+4H/3X/sVQLhDitSDrfBnoPHR1gAUc8gefBvbaJjoYAI8TuCJiK51GKwaRqW4qZArF5QcaUQLnipRBx7qipoGfNjm1i3FOpzgjUCov4xMzxL6+QksUWr+3F+VbGex4n6PdFaPw2"
+    }
+  }
+]

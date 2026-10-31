@@ -12,4 +12,4 @@ if ($LASTEXITCODE -ne 0) { throw 'Se necesita Python x64.' }
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron instalar las dependencias.' }
 & $pythonExe -m PyInstaller --noconfirm --clean --distpath $base --workpath (Join-Path $buildWork 'build') (Join-Path $base 'BovedaLocal.spec')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la construcción del ejecutable.' }
-Write-Host ('Ejecutable creado: ' + (Join-Path $base 'BovedaLocal.exe'))
+Write-Host ('Ejecutable creado: ' + (Join-Path $base 'InfinityMedBoveda-v2.exe'))

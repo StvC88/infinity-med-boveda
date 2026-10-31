@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 from PyInstaller.utils.hooks import collect_all
 
-datas = []
+datas = [(str(Path(SPECPATH) / 'assets'), 'assets')]
 binaries = []
 hiddenimports = ['_cffi_backend']
 tmp_ret = collect_all('nacl')
@@ -33,7 +33,8 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='BovedaLocal',
+    name='InfinityMedBoveda-v2',
+    icon=str(Path(SPECPATH) / 'assets' / 'infinity-med.ico'),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

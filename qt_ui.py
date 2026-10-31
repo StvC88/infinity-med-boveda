@@ -5,13 +5,43 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, QMimeData, QUrl, Qt
-from PySide6.QtGui import QDrag
+from PySide6.QtGui import QDrag, QIcon, QPixmap, QColor, QPainter
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QListWidget, QListWidgetItem, QAbstractItemView, QProgressBar,
-    QFileDialog, QInputDialog, QLineEdit, QMessageBox, QMenu, QTreeView, QFileSystemModel, QFrame, QStyle,
+    QFileDialog, QInputDialog, QLineEdit, QMessageBox, QMenu, QTreeView, QFileSystemModel, QFrame, QStyle, QFileIconProvider,
 )
 from terabox_local import Vault, VaultError, read_header, safe_path, outside, inside, check_cancel
+
+
+def folder_icon(color):
+    pix = QPixmap(32, 28)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(color).darker(110))
+    painter.drawRoundedRect(2, 3, 14, 8, 2, 2)
+    painter.drawRoundedRect(2, 8, 28, 18, 3, 3)
+    painter.setBrush(QColor(color))
+    painter.drawRoundedRect(2, 10, 28, 16, 3, 3)
+    painter.end()
+    return QIcon(pix)
+
+
+class ColoredFolders(QFileIconProvider):
+    def icon(self, info):
+        if hasattr(info, "isDir") and info.isDir():
+            colors = ("#58afba", "#d9ae52", "#9d8cc4")
+            return folder_icon(colors[sum(map(ord, info.fileName())) % len(colors)])
+        return super().icon(info)
+
+
+class RecoveryModel(QFileSystemModel):
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+            return {0: "Nombre", 1: "Tamaño", 2: "Tipo", 3: "Modificado"}.get(section)
+        return super().headerData(section, orientation, role)
 
 
 def local_drop_paths(mime):
@@ -110,7 +140,17 @@ class Window(QWidget):
         layout = QVBoxLayout(self)
         title = QLabel("Infinity Med · Bóveda")
         title.setStyleSheet("font-size: 22px; font-weight: 400")
-        layout.addWidget(title)
+        brand = QHBoxLayout()
+        logo_path = Path(__file__).resolve().parent / "assets" / "infinity-med.png"
+        logo = QPixmap(str(logo_path))
+        if not logo.isNull():
+            mark = QLabel()
+            mark.setPixmap(logo.scaled(270, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            brand.addWidget(mark)
+            self.setWindowIcon(QIcon(str(logo_path)))
+        brand.addStretch()
+        brand.addWidget(title)
+        layout.addLayout(brand)
         label = QLabel("Arrastre archivos desde Windows para cifrarlos. Compatible con carpetas locales de nube; la subida depende del cliente.")
         label.setWordWrap(True)
         layout.addWidget(label)
@@ -130,6 +170,7 @@ class Window(QWidget):
         self.button(row, "Desbloquear", self.unlock)
         self.button(row, "Bloquear", self.lock)
         self.button(row, "Actualizar", self.refresh)
+        self.button(row, "Verificar repositorio", self.verify_repository)
         self.files = FileList(self)
         self.files.dropped.connect(self.import_paths)
         self.files.setSortingEnabled(True)
@@ -145,6 +186,7 @@ class Window(QWidget):
         left_header = QHBoxLayout()
         left_header.addWidget(QLabel("Encriptados"))
         self.button(left_header, "Carpeta ▾", self.choose)
+        self.controls[-1].setIcon(folder_icon("#d9ae52"))
         left.addLayout(left_header)
         left.addWidget(self.files)
         left.addWidget(QLabel("Arrastre aquí archivos desde Windows"))
@@ -153,9 +195,12 @@ class Window(QWidget):
         right_header = QHBoxLayout()
         right_header.addWidget(QLabel("Desencriptados"))
         self.button(right_header, "Carpeta ▾", self.choose_recovered)
+        self.controls[-1].setIcon(folder_icon("#58afba"))
         right.addLayout(right_header)
         self.recovered = QTreeView()
-        self.recovered_model = QFileSystemModel(self)
+        self.recovered_model = RecoveryModel(self)
+        self.recovered_icons = ColoredFolders()
+        self.recovered_model.setIconProvider(self.recovered_icons)
         self.recovered_model.setReadOnly(True)
         self.recovered.setModel(self.recovered_model)
         self.recovered.setVisible(False)
@@ -226,7 +271,8 @@ class Window(QWidget):
             self.error(exc)
 
     def update_paths(self):
-        self.path_label.setText(f"Bóveda: {self.folder or '—'}\nÁrea de nube: {self.cloud_root or '—'} · Temporales cifrados: {self.staging or '—'}")
+        self.path_label.setText(f"Repositorio: {self.folder.name if self.folder else 'sin seleccionar'} · Temporales cifrados: {self.staging.name if self.staging else 'sin seleccionar'}")
+        self.path_label.setToolTip(f"Bóveda: {self.folder}\nÁrea de nube: {self.cloud_root}\nTemporales: {self.staging}")
 
     def choose(self):
         path = QFileDialog.getExistingDirectory(self, "Carpeta cifrada; vacía para crear")
@@ -256,7 +302,8 @@ class Window(QWidget):
             self.update_paths()
 
     def password(self, title, twice=False):
-        value, ok = QInputDialog.getText(self, title, "Contraseña:", QLineEdit.EchoMode.Password)
+        prompt = "Use una frase larga y única (12 o más caracteres recomendados):" if twice else "Contraseña del repositorio:"
+        value, ok = QInputDialog.getText(self, title, prompt, QLineEdit.EchoMode.Password)
         if not ok:
             return None
         if twice:
@@ -358,13 +405,28 @@ class Window(QWidget):
         self.vault = None
         self.prepared.clear()
         self.files.clear()
+        self.filter.clear()
+        self.recovered.setVisible(False)
+        self.recovered_model.setRootPath("")
+        self.recovered.clearSelection()
         self.status.setText("Bloqueada. Los archivos recuperados se conservan. Cierre la app al terminar.")
+
+    def verify_repository(self):
+        v = self.require()
+        def done(result):
+            suffix = "Inventario autenticado comprobado." if result["inventory"] else "Formato antiguo: no permite detectar archivos desaparecidos."
+            self.status.setText(f"Verificación local completa: {result['files']} archivos. {suffix}")
+        self.start(lambda: v.verify(lambda n, total: self.report(n, total, "Verificando archivos"), self.cancel), done)
 
     def refresh(self):
         v = self.require()
         def task():
             rows = []
-            for entry in v.entries():
+            entries = v.entries()
+            inventory = v._read_inventory()
+            if inventory is not None and sorted(inventory) != entries:
+                raise VaultError("Faltan archivos o hay objetos no registrados. Revise la sincronización y conserve todos los archivos.")
+            for entry in entries:
                 check_cancel(self.cancel)
                 rows.append((entry, v.metadata(entry)))
             return rows
@@ -376,8 +438,9 @@ class Window(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, entry)
                 self.files.addItem(item)
             self.filter_files(self.filter.text())
-            state = v.header["state"]
-            self.status.setText(f"{len(rows)} archivos · {state}. Guardado localmente; subida pendiente de comprobar en su cliente de nube.")
+            state = {"ready": "Lista", "migration-incomplete": "Migración incompleta", "migration-complete": "Migración verificada"}[v.header["state"]]
+            version = " · Formato antiguo sin inventario" if v.header["version"] == 1 else ""
+            self.status.setText(f"{len(rows)} archivos · {state}{version}. Guardado localmente; subida pendiente de comprobar en su cliente de nube.")
         self.start(task, show)
 
     def add(self):
@@ -423,6 +486,7 @@ class Window(QWidget):
         self.start(task, done)
 
     def show_recovered(self, destination):
+        outside(destination, self.require().cloud_root)
         self.recovered.setVisible(True)
         root = self.recovered_model.setRootPath(str(destination))
         self.recovered.setRootIndex(root)

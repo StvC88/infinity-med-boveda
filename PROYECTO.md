@@ -2,7 +2,7 @@
 
 Prototipo de escritorio que cifra archivos y nombres antes de colocarlos en una carpeta local gestionada por un proveedor de nube. Su objetivo es conservar el control de las claves y permitir la recuperación sin depender de una aplicación concreta, de una cuenta del desarrollador o del ordenador original.
 
-La interfaz utiliza dos paneles: Encriptados y Desencriptados. Se importa desde Windows al panel encriptado; la flecha recupera al destino final elegido. Sólo el panel desencriptado permite exportar por arrastre. El diseño está evolucionando hacia un estilo zen, sin negritas. El logo oficial está pendiente de incorporación.
+La interfaz utiliza dos paneles: Encriptados y Desencriptados. Se importa desde Windows al panel encriptado; la flecha recupera al destino final elegido. Sólo el panel desencriptado permite exportar por arrastre. El diseño está evolucionando hacia un estilo zen, sin negritas. Se incorporó una adaptación del logo aportado por el usuario.
 
 ## Protecciones implementadas
 
@@ -18,4 +18,4 @@ Puede reinstalar la aplicación o desarrollar otra compatible y abrir el reposit
 
 Prototipo, no producto clínico terminado. El motor tiene pruebas automatizadas; la nueva interfaz está en revisión. La jerarquía de carpetas cifradas no está implementada. No hay confirmación automática de subida a TeraBox ni descargas propias: el cliente de nube es independiente. Los ejecutables anteriores no representan necesariamente los últimos cambios de interfaz.
 
-Consulte README.md para ejecutar desde Python, FORMATO.md para interoperabilidad y VERIFICACION.md para el alcance histórico de las pruebas. Las afirmaciones de pruebas corresponden a las versiones descritas allí, no a una auditoría del producto.
+Consulte CAMBIOS-v2.md para inventario autenticado, lector independiente y estado de pruebas. Consulte README.md para ejecutar desde Python, FORMATO.md para interoperabilidad y VERIFICACION.md para el alcance histórico de las pruebas. Las afirmaciones de pruebas corresponden a las versiones descritas allí, no a una auditoría del producto.

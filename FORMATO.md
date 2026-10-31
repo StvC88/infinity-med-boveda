@@ -1,4 +1,4 @@
-# Formato interoperable v1
+# Formato de repositorio v1 y v2
 
 La aplicación es un cliente del repositorio, no una llave vinculada al ordenador. Una copia completa del repositorio y su contraseña permiten desbloquearlo desde otra instalación. No hay secretos en el registro de Windows, identificador de equipo, servidor o licencia. Si se borran todas las copias del repositorio, la contraseña no reconstruye los datos.
 
@@ -27,3 +27,16 @@ La rotación crea otra bóveda y otra clave aleatoria; vuelve a cifrar cada arch
 ## Restauración en otro equipo
 
 Conserve boveda.json y TODOS los .tbe, descargue la copia completa, instale un cliente compatible, seleccione el repositorio y escriba su contraseña. La contraseña abre el repositorio, no una cuenta de la aplicación. No publique datos ni encabezados reales en GitHub. Nunca transforme el formato silenciosamente; una modificación incompatible requiere una versión nueva y un migrador explícito.
+
+
+## Extensión v2: inventario obligatorio
+
+Los encabezados nuevos usan version=2 y un campo adicional inventory="v1", incluido en los datos adicionales autenticados del envoltorio. El resto de campos y los objetos .tbe conservan exactamente su codificación anterior. Los lectores antiguos que sólo admiten encabezados v1 deben rechazar v2. El cliente actual lee ambas versiones; no modifica una bóveda v1 al abrirla.
+
+El archivo inventario.tbi es obligatorio en v2. Sus primeros 24 bytes son un nonce aleatorio; el resto es un objeto JSON UTF-8 cifrado con AEAD XChaCha20-Poly1305-IETF, clave de datos de la bóveda y AD igual a ASCII inventory-v1 concatenado con los 16 bytes de identidad de bóveda. El JSON mapea cada nombre de objeto .tbe a su SHA-256 hexadecimal minúsculo sobre TODOS los bytes cifrados de ese objeto. Se serializa con la misma función canónica del encabezado. Longitud total máxima: 2 MiB; máximo 10000 registros. No contiene nombres originales en texto claro.
+
+La verificación exige que el conjunto físico de objetos coincida exactamente con el inventario y verifica carga completa, hash, FINAL y EOF. No detecta restaurar conjuntamente un inventario antiguo válido y sus objetos. Un cierre entre publicar el objeto y sustituir el inventario puede dejar un objeto extra íntegro: se conserva, no se admite como operación completada y se bloquean importaciones hasta revisión. La recuperación individual puede rescatarlo; no hay reparación automática.
+
+El formato v1 sin inventario sigue recuperándose, pero no puede detectar un objeto eliminado en su totalidad. Migrarlo a una bóveda nueva crea v2 y una clave independiente. Conserve encabezado, inventario y todos los objetos al mover/restaurar v2.
+
+recuperar_independiente.py es una segunda implementación de lectura de esta especificación. vectores-publicos.json transporta pequeños repositorios de prueba como pares nombre/base64, con contraseña y SHA-256 de texto claro publicados deliberadamente. Nunca usar sus contraseñas para datos reales. Las pruebas actuales validan el motor escritor contra ese lector, no una segunda implementación escritora ni una auditoría externa.
