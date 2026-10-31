@@ -1,0 +1,11 @@
+work/
+.venv/
+__pycache__/
+*.pyc
+*.exe
+*.zip
+*.tbe
+*.tbr
+boveda.json
+*.partial
+*.tmp
