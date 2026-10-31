@@ -13,6 +13,7 @@ import tempfile
 import uuid
 from contextlib import contextmanager
 from functools import wraps
+from windows_io import stable_source
 
 from nacl import bindings as sodium
 from nacl import pwhash, utils
@@ -32,6 +33,34 @@ ENTRY = re.compile(r"^[0-9a-f]{32}\.tbe$")
 RECEIPT = "rotacion.tbr"
 MAX_FILES = 10000
 INVENTORY = "inventario.tbi"
+MIN_NEW_PASSWORD = 15
+
+
+def validate_new_password(password):
+    """Política local de creación; jamás cambia la codificación de claves antiguas."""
+    if not isinstance(password, str) or len(password) < MIN_NEW_PASSWORD or len(password.encode('utf-8')) > 1024:
+        raise VaultError("Use una contraseña nueva de al menos 15 caracteres y hasta 1024 bytes; preferiblemente una frase larga y única.")
+    if any(ord(c) < 32 for c in password):
+        raise VaultError("La contraseña nueva no puede contener caracteres de control.")
+    folded = password.casefold()
+    compact = ''.join(c for c in folded if c.isalnum() or c in '@$!')
+    if not compact:
+        raise VaultError("No use sólo espacios o signos repetidos.")
+    for width in range(1, min(7, len(compact))):
+        if compact == (compact[:width] * ((len(compact) // width) + 1))[:len(compact)]:
+            raise VaultError("Evite caracteres o patrones repetidos en la contraseña nueva.")
+    if any(compact in sequence * 5 for sequence in ('0123456789','9876543210','abcdefghijklmnopqrstuvwxyz','zyxwvutsrqponmlkjihgfedcba','qwertyuiopasdfghjklzxcvbnm')):
+        raise VaultError("Evite secuencias previsibles de números, letras o teclado.")
+    token = compact.rstrip('0123456789!').translate(str.maketrans({'@':'a','$':'s','0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','!':'i'}))
+    if token and len(set(token)) == 1:
+        raise VaultError("No use un carácter repetido con un sufijo previsible.")
+    for width in range(1, min(7, len(token))):
+        if len(token) >= 2 * width and token == (token[:width] * ((len(token) // width) + 1))[:len(token)]:
+            raise VaultError("No use un patrón repetido con números o signos añadidos al final.")
+    if token in {'password','passwordpassword','contrasena','contraseña','admin','administrator','administrador','changeme','letmein','qwerty','infinitymed','infinitymedhealthcare','infinity','boveda','correcthorsebatterystaple'}:
+        raise VaultError("La contraseña nueva es demasiado previsible o está basada en el nombre de la aplicación.")
+    # No equivale a una lista exhaustiva de contraseñas filtradas ni a una garantía de entropía.
+    return password
 
 
 @contextmanager
@@ -146,6 +175,32 @@ def safe_name(name):
         *(f"COM{x}" for x in "123456789¹²³"), *(f"LPT{x}" for x in "123456789¹²³"),
     }:
         raise VaultError("Nombre reservado de Windows rechazado.")
+    return name
+
+
+BIDI_CONTROLS = frozenset('\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069')
+
+
+def display_name(name):
+    """Presentación inequívoca; nunca modifica los metadatos autenticados."""
+    return ''.join(f'[U+{ord(c):04X}]' if c in BIDI_CONTROLS else c for c in name)
+
+
+def export_name(name):
+    safe_name(name)
+    if not any(c in BIDI_CONTROLS for c in name):
+        return name
+    # Marca visible, no elimina caracteres silenciosamente ni normaliza Unicode.
+    result = 'nombre-seguro-' + ''.join(f'_U{ord(c):04X}_' if c in BIDI_CONTROLS else c for c in name)
+    if len(result.encode('utf-16-le')) > 480:
+        result = 'archivo-recuperado-' + hashlib.sha256(name.encode('utf-8')).hexdigest() + '.bin'
+    return safe_name(result)
+
+
+def new_name(name):
+    safe_name(name)
+    if any(c in BIDI_CONTROLS for c in name):
+        raise VaultError('El nombre contiene controles bidireccionales no permitidos en nuevas importaciones. Renombre el archivo original.')
     return name
 
 
@@ -275,11 +330,13 @@ class Vault:
 
     @classmethod
     def create(cls, folder, password, hint, staging, state="ready"):
+        validate_new_password(password)
         with operation_lock(folder):
             return cls._create(folder, password, hint, staging, state)
 
     @classmethod
     def _create(cls, folder, password, hint, staging, state="ready"):
+        validate_new_password(password)
         folder = safe_path(folder, directory=True)
         if any(folder.iterdir()):
             raise VaultError("Para crear una bóveda use una carpeta vacía.")
@@ -355,6 +412,8 @@ class Vault:
 
     @serialized
     def verify(self, progress=None, cancel=None):
+        if read_header(self.folder) != self.header:
+            raise VaultError("El encabezado cambió desde el desbloqueo; verificación bloqueada. Conserve la copia y revise su integridad.")
         records = self._read_inventory()
         entries = self.entries()
         if records is not None and sorted(records) != entries:
@@ -466,8 +525,17 @@ class Vault:
         source = outside(source, self.cloud_root)
         if not source.is_file():
             raise VaultError("Seleccione un archivo regular.")
-        safe_name(source.name)
-        with source.open("rb") as f:
+        new_name(source.name)
+        try:
+            opened = stable_source(source)
+            return self._add_opened(source, staging, opened, progress, cancel)
+        except OSError as exc:
+            if getattr(exc,'winerror',None) in (32,33):
+                raise VaultError('El original está en uso. Cierre editores u otros procesos que lo estén escribiendo y reintente.') from exc
+            raise
+
+    def _add_opened(self, source, staging, opened, progress, cancel):
+        with opened as f:
             before = os.fstat(f.fileno())
             def blocks():
                 while True:
@@ -482,17 +550,25 @@ class Vault:
             return self.encrypt_chunks({"name": source.name, "size": before.st_size}, blocks(), staging, progress, cancel)
 
     @serialized
-    def restore(self, entry, destination, progress=None, cancel=None):
+    def restore(self, entry, destination, progress=None, cancel=None, journal=None):
+        destination = outside(destination, self.cloud_root)
+        with operation_lock(destination):
+            return self._restore_locked(entry, destination, progress, cancel, journal)
+
+    def _restore_locked(self, entry, destination, progress, cancel, journal):
         destination = outside(destination, self.cloud_root)
         safe_path(destination, directory=True)
         f, state, ad, meta = self.reader(entry)
         temp = None
         try:
-            target = destination / safe_name(meta["name"])
+            target = destination / export_name(meta["name"])
             if target.exists() or target.is_symlink():
                 raise VaultError("Ya existe un archivo con ese nombre en el destino.")
             temp, out = temp_file(destination, ".partial")
             with f, out:
+                if journal is not None:
+                    info = os.fstat(out.fileno())
+                    journal.record(temp, self.cloud_root, identity=(info.st_dev,info.st_ino))
                 total = 0
                 for data in self.chunks(f, state, ad, meta["size"], cancel):
                     out.write(data)
@@ -507,6 +583,8 @@ class Vault:
             f.close()
             if temp is not None:
                 temp.unlink(missing_ok=True)
+                if journal is not None and not temp.exists():
+                    journal.forget(temp)
 
     @serialized
     def migrate(self, current_password, new_folder, new_password, hint, staging, progress=None, cancel=None):
@@ -515,6 +593,7 @@ class Vault:
         fresh = Vault.unlock(self.folder, current_password)  # Exigir contraseña ACTUAL aun desbloqueada.
         if fresh.key != self.key or fresh.header != self.header:
             raise VaultError("La bóveda cambió; vuelva a desbloquearla.")
+        validate_new_password(new_password)
         new_folder = safe_path(new_folder, directory=True)
         if inside(new_folder, self.folder) or inside(self.folder, new_folder):
             raise VaultError("La nueva bóveda debe estar en una carpeta separada.")
@@ -596,64 +675,10 @@ class Vault:
             if digest.hexdigest() != record["plain_hash"]:
                 raise VaultError("Contenido distinto después de la rotación.")
 
-    @serialized
     def cleanup_previous(self, new_password, upload_confirmed=False, cancel=None, deleted_callback=None):
-        if not upload_confirmed:
-            raise VaultError("Primero compruebe personalmente la subida de la nueva bóveda en TeraBox.")
-        fresh = Vault.unlock(self.folder, new_password)
-        if fresh.key != self.key or fresh.header["state"] != "migration-complete":
-            raise VaultError("La rotación no está completa.")
-        with safe_path(self.folder / RECEIPT).open("rb") as f:
-            raw = f.read(32 * 1024 * 1024 + 41)
-        if not 40 <= len(raw) <= 32 * 1024 * 1024 + 40:
-            raise VaultError("Registro de rotación no válido.")
-        try:
-            receipt = json.loads(sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(raw[24:], bytes.fromhex(self.header["vault"]), raw[:24], self.key))
-        except (CryptoError, ValueError) as exc:
-            raise VaultError("Registro de rotación no auténtico.") from exc
-        source = safe_path(receipt["source"], directory=True)
-        if inside(source, self.folder) or inside(self.folder, source):
-            raise VaultError("Ruta de limpieza no válida.")
-        with operation_lock(source):
-            records = receipt["records"]
-            for r in records:
-                if not ENTRY.fullmatch(r["old"]) or not ENTRY.fullmatch(r["new"]):
-                    raise VaultError("Identificador peligroso en registro.")
-            # Revalidar TODO el nuevo contenido antes de cualquier borrado antiguo.
-            fresh.verify_records(records, cancel)
-            new_inventory = fresh._read_inventory()
-            if new_inventory is not None and sorted(new_inventory) != fresh.entries():
-                raise VaultError("Inventario nuevo no coincide; limpieza bloqueada.")
-            old_header = source / HEADER
-            if old_header.exists() and file_digest(old_header, cancel) != receipt["header_hash"]:
-                raise VaultError("La identidad de la bóveda anterior cambió; limpieza bloqueada.")
-            for r in records:
-                path = source / r["old"]
-                if path.exists() and file_digest(path, cancel) != r["cipher_hash"]:
-                    raise VaultError("Un archivo antiguo cambió; limpieza bloqueada.")
-            old_inventory = source / INVENTORY
-            if "inventory_hash" in receipt and old_inventory.exists() and file_digest(old_inventory, cancel) != receipt["inventory_hash"]:
-                raise VaultError("El inventario anterior cambió; limpieza bloqueada.")
-            for r in records:
-                check_cancel(cancel)
-                path = source / r["old"]
-                if path.exists():
-                    if file_digest(path, cancel) != r["cipher_hash"]:
-                        raise VaultError("Cambió el archivo antes de borrarlo.")
-                    safe_path(path).unlink()  # Sólo archivo enumerado y validado; nunca recursivo.
-                    if deleted_callback:
-                        deleted_callback(path)
-            check_cancel(cancel)
-            # Si aparecen nuevas entradas, conservar el encabezado para poder recuperarlas.
-            if old_header.exists() and not any(ENTRY.fullmatch(p.name) for p in source.iterdir()):
-                if file_digest(old_header, cancel) != receipt["header_hash"]:
-                    raise VaultError("Cambió el encabezado antiguo.")
-                if "inventory_hash" in receipt and old_inventory.exists():
-                    if file_digest(old_inventory, cancel) != receipt["inventory_hash"]:
-                        raise VaultError("Cambió el inventario antiguo.")
-                    safe_path(old_inventory).unlink()
-                safe_path(old_header).unlink()
-            return source
+        # Sin ruta alternativa ni interruptor oculto: el borrado anterior se retira.
+        raise VaultError("La limpieza de versiones anteriores está deshabilitada en esta versión. Conserve la bóveda anterior; el recifrado y la recuperación siguen disponibles.")
+
 
 
 

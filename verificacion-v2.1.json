@@ -1,0 +1,60 @@
+{
+  "version": "2.1",
+  "date": "2026-10-31",
+  "platform": "Windows x64",
+  "executable": "InfinityMedBoveda-v2.1.exe",
+  "executable_sha256": "ba6193b7667a8e90d025c15ab89ef11c04349434100c33673125f13ac6c3f31d",
+  "tests": {
+    "passed": 50,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 31.737,
+    "suites": [
+      "test_vault",
+      "test_ui",
+      "test_improvements",
+      "test_password_security",
+      "test_release_security"
+    ]
+  },
+  "native_smoke": {
+    "gui_started": true,
+    "pointer_bits": 64,
+    "frozen": true,
+    "cleanup_disabled": true,
+    "crypto_roundtrip": true,
+    "full_rotation": true,
+    "previous_vault_preserved": true
+  },
+  "source_sha256": {
+    "terabox_local.py": "bdd18e1bbfc7addac8839f793db1cbf1fc381c126f6fd15522417a2bf7849802",
+    "qt_ui.py": "dced8f72ac51a8cc8a239c98971d883d4c94bb7604774ef6c680009123b4557c",
+    "windows_io.py": "1680139390776232959ce2d7361c0a3b70b47b2a88f0850a224841679c55fd74",
+    "recovery_history.py": "bbb0387e1a44ca1b1fa0f48b3a6eb6f68a0b5b44ca8e9f2ff1e42a4caa9b3d62",
+    "recuperar_independiente.py": "0bd1d4c7d0161befecf4a0ff25cdd01a1da00ebfc2fc86e5024d4ed0ca022d32",
+    "test_vault.py": "486bd66d4d86e2f0d37a446701f462083eaf5b218363ca60a9e6cd86f16ab32a",
+    "test_ui.py": "9702dfe2b15363188a1ea8a97bf1b2407a1f474e2524bf767e2a0077b2158ae8",
+    "test_improvements.py": "e06b3a2e092532e70c5e729023e057736eb7f8d2e021c623fdc144be5a0d22cf",
+    "test_password_security.py": "2b4753ba01ab190aa14e5eaa7130529ce987995c51730b0af8eee23aa9a050a8",
+    "test_release_security.py": "0d91da06f2ef1797ebb02a4bbebd5ec72ce231534464ce2c3264589a41f0dce5",
+    "requirements.txt": "1466e2f8282e7b9108382354eb1614065c3f0ecf35b3468d76e63c3c3410b6b2",
+    "BovedaLocal.spec": "62749d2cce42e6f65ad25e72b41d5d64ee27daa9fd6c4eaf75f9a077329b4e18",
+    "build.ps1": "faeb26a4c0e9ec632725545248ec4175b01a7f41c5f8442f0e96099ad525af21",
+    ".github/workflows/windows.yml": "80abd2acc2a4d17551b7e508a8ef15e5b630a0e05b913dbbde462bbc740e76a5",
+    ".gitignore": "c099211b80a0187760c5a6e7e94025fad79c3f3ac5502fb96a423326f025500d",
+    "README.md": "d74c231d8a65a190d72cf3bb600d3e47c3654047bc908d91556db40760e18a23",
+    "FORMATO.md": "7ad1c2478be9aa831482b29cbe86ce53f295e1287b224cf2ddb6f19b7e325bad",
+    "CAMBIOS-v2.1.md": "59e79cfa328883ab0034f8a3ea03c549190b23101fdfb2d68f609913ed219d67",
+    "PROYECTO.md": "9644102127baa5a39298acebbbca30bfec4c8e1e3b61cef1d2b54a1f4d43121a",
+    "LICENCIAS.md": "a92b0cccf654b95e6a1a86742cbfce23cbfa501f80811caacd498237b66d1623",
+    "vectores-publicos.json": "a0c325f636d0117ce455eaa4cc02b88ef3432237731853e09521b98f346c62d1"
+  },
+  "pending": [
+    "symlink en entorno con privilegio disponible",
+    "restauración en otro PC limpio",
+    "arrastre físico completo con Explorer",
+    "firma de editor confiable",
+    "TeraBox real y volúmenes grandes",
+    "cortes físicos de energía"
+  ]
+}

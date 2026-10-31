@@ -83,6 +83,16 @@ def filename(name):
     return name
 
 
+def exported_filename(name):
+    filename(name)
+    controls=frozenset('\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069')
+    if not any(c in controls for c in name):return name
+    safe='nombre-seguro-'+''.join(f'_U{ord(c):04X}_' if c in controls else c for c in name)
+    if len(safe.encode('utf-16-le'))>480:
+        safe='archivo-recuperado-'+hashlib.sha256(name.encode('utf-8')).hexdigest()+'.bin'
+    return filename(safe)
+
+
 def consume_object(folder, entry, h, key, destination=None):
     """Devuelve metadatos; publica el destino sólo después de FINAL y EOF."""
     if not PATTERN.fullmatch(entry):
@@ -110,7 +120,7 @@ def consume_object(folder, entry, h, key, destination=None):
             meta = json.loads(raw)
             if tag != 0 or not isinstance(meta, dict) or set(meta) != {"name", "size"} or type(meta["size"]) is not int or not 0 <= meta["size"] < 2**63:
                 raise ValueError("Metadatos inválidos.")
-            name = filename(meta["name"])
+            name = exported_filename(meta["name"])
             if destination is not None:
                 target = checked(destination) / name
                 if target.exists() or target.is_symlink():

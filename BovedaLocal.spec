@@ -33,7 +33,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='InfinityMedBoveda-v2',
+    name='InfinityMedBoveda-v2.1',
     icon=str(Path(SPECPATH) / 'assets' / 'infinity-med.ico'),
     debug=False,
     bootloader_ignore_signals=False,

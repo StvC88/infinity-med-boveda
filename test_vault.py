@@ -114,7 +114,7 @@ class VaultTests(unittest.TestCase):
         vault_dir.mkdir()
         other = cloud / "other"
         other.mkdir()
-        v = t.Vault.create(vault_dir, "pass", "", self.stage).set_cloud_root(cloud)
+        v = t.Vault.create(vault_dir, "frase de prueba extensa", "", self.stage).set_cloud_root(cloud)
         source = self.root / "plain.txt"
         source.write_bytes(b"datos")
         entry = v.add(source, self.stage)
@@ -199,57 +199,24 @@ class VaultTests(unittest.TestCase):
         def progress(*args):
             cancel.set()
         with self.assertRaises(t.Cancelled):
-            self.v.migrate("actual contraseña larga", self.new_dir, "nueva", "", self.stage, progress, cancel)
+            self.v.migrate("actual contraseña larga", self.new_dir, "nueva frase larga de prueba", "", self.stage, progress, cancel)
         self.assertEqual(len(self.v.entries()), 1)
         self.assertEqual(t.read_header(self.new_dir)["state"], "migration-incomplete")
         self.assertEqual(list(self.stage.iterdir()), [])
 
-    def test_cleanup_manual_confirmation_and_only_owned_files(self):
+
+
+
+    def test_cleanup_disabled_preserves_both_repositories(self):
         self.add()
         new = self.migrate()
-        unrelated = self.old / "NO_BORRAR.txt"
-        unrelated.write_text("ajeno")
-        sub = self.old / "carpeta-ajena"
-        sub.mkdir()
-        (sub / "datos").write_bytes(b"ajeno")
-        with self.assertRaises(t.VaultError):
-            new.cleanup_previous("nueva contraseña larga")
-        self.assertEqual(len(self.v.entries()), 1)
-        new.cleanup_previous("nueva contraseña larga", True)
-        self.assertTrue(unrelated.exists())
-        self.assertEqual((sub / "datos").read_bytes(), b"ajeno")
-        self.assertFalse((self.old / t.HEADER).exists())
-        self.assertTrue((self.root / "archivo.txt").exists())
-        new.cleanup_previous("nueva contraseña larga", True)  # Repetible.
-
-    def test_cleanup_refuses_damaged_new_or_changed_old(self):
-        old_entry = self.add()
-        new = self.migrate()
-        p = new.folder / new.entries()[0]
-        data = p.read_bytes()
-        p.write_bytes(data[:-1])
-        with self.assertRaises(t.VaultError):
-            new.cleanup_previous("nueva contraseña larga", True)
-        self.assertTrue((self.old / old_entry).exists())
-        p.write_bytes(data)
-        (self.old / old_entry).write_bytes(b"alterado")
-        with self.assertRaises(t.VaultError):
-            new.cleanup_previous("nueva contraseña larga", True)
-        self.assertTrue((self.old / t.HEADER).exists())
-
-    def test_cleanup_interruption_can_resume(self):
-        self.add("uno.txt")
-        self.add("dos.txt")
-        new = self.migrate()
-        cancel = threading.Event()
-        with self.assertRaises(t.Cancelled):
-            new.cleanup_previous("nueva contraseña larga", True, cancel, lambda _: cancel.set())
-        self.assertEqual(len(self.v.entries()), 1)
-        self.assertTrue((self.old / t.HEADER).exists())
-        cancel.clear()
-        new.cleanup_previous("nueva contraseña larga", True, cancel)
-        self.assertEqual(self.v.entries(), [])
-        self.assertEqual(len(new.entries()), 2)
+        before_old = {p.name:p.read_bytes() for p in self.old.iterdir()}
+        before_new = {p.name:p.read_bytes() for p in self.new_dir.iterdir()}
+        for password, confirmed in [("nueva contraseña larga",True),("incorrecta",True),("nueva contraseña larga",False)]:
+            with self.assertRaises(t.VaultError):
+                new.cleanup_previous(password,confirmed)
+        self.assertEqual(before_old,{p.name:p.read_bytes() for p in self.old.iterdir()})
+        self.assertEqual(before_new,{p.name:p.read_bytes() for p in self.new_dir.iterdir()})
 
     def test_streaming_bounded_python_allocations(self):
         count = 80

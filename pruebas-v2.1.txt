@@ -1,0 +1,57 @@
+test_cancel_and_publication_failure_clean_temps (test_vault.VaultTests.test_cancel_and_publication_failure_clean_temps) ... ok
+test_cancel_migration_preserves_source (test_vault.VaultTests.test_cancel_migration_preserves_source) ... ok
+test_cancel_restore_removes_partial (test_vault.VaultTests.test_cancel_restore_removes_partial) ... ok
+test_ciphertext_identity_binding (test_vault.VaultTests.test_ciphertext_identity_binding) ... ok
+test_cleanup_disabled_preserves_both_repositories (test_vault.VaultTests.test_cleanup_disabled_preserves_both_repositories) ... ok
+test_corruption_truncation_reorder_trailing_and_length (test_vault.VaultTests.test_corruption_truncation_reorder_trailing_and_length) ... ok
+test_dangerous_names (test_vault.VaultTests.test_dangerous_names) ... ok
+test_declared_cloud_root_protects_other_sync_subfolders (test_vault.VaultTests.test_declared_cloud_root_protects_other_sync_subfolders) ... ok
+test_failed_migration_preserves_old_and_marks_incomplete (test_vault.VaultTests.test_failed_migration_preserves_old_and_marks_incomplete) ... ok
+test_independent_rotation_and_both_passwords (test_vault.VaultTests.test_independent_rotation_and_both_passwords) ... ok
+test_no_plaintext_inside_vault_no_overwrite (test_vault.VaultTests.test_no_plaintext_inside_vault_no_overwrite) ... ok
+test_password_hint_and_bounded_parameters (test_vault.VaultTests.test_password_hint_and_bounded_parameters) ... ok
+test_rotation_requires_current_password (test_vault.VaultTests.test_rotation_requires_current_password) ... ok
+test_roundtrip_boundaries_and_empty (test_vault.VaultTests.test_roundtrip_boundaries_and_empty) ... ok
+test_streaming_bounded_python_allocations (test_vault.VaultTests.test_streaming_bounded_python_allocations) ... ok
+test_drop_dispatch_native_event (test_ui.UITests.test_drop_dispatch_native_event) ... ok
+test_lock_hides_recovered_and_clears_names (test_ui.UITests.test_lock_hides_recovered_and_clears_names) ... ok
+test_native_file_urls_import_export_and_clipboard (test_ui.UITests.test_native_file_urls_import_export_and_clipboard) ... ok
+test_partial_files_are_not_draggable_or_copyable (test_ui.UITests.test_partial_files_are_not_draggable_or_copyable) ... ok
+test_reject_remote_urls_and_folders (test_ui.UITests.test_reject_remote_urls_and_folders) ... ok
+test_independent_reader_legacy_v1 (test_improvements.Improvements.test_independent_reader_legacy_v1) ... ok
+test_independent_reader_v2 (test_improvements.Improvements.test_independent_reader_v2) ... ok
+test_interrupted_inventory_update_keeps_complete_object (test_improvements.Improvements.test_interrupted_inventory_update_keeps_complete_object) ... ok
+test_inventory_tamper (test_improvements.Improvements.test_inventory_tamper) ... ok
+test_missing_object_and_missing_inventory (test_improvements.Improvements.test_missing_object_and_missing_inventory) ... ok
+test_public_vectors (test_improvements.Improvements.test_public_vectors) ... ok
+test_reader_rejects_truncation_without_publishing (test_improvements.Improvements.test_reader_rejects_truncation_without_publishing) ... ok
+test_reader_rejects_wrong_password_and_cloud_destination (test_improvements.Improvements.test_reader_rejects_wrong_password_and_cloud_destination) ... ok
+test_two_processes_cannot_write_same_repository (test_improvements.Improvements.test_two_processes_cannot_write_same_repository) ... ok
+test_creation_rejects_simple_passwords_before_writing (test_password_security.PasswordSecurity.test_creation_rejects_simple_passwords_before_writing) ... ok
+test_independent_random_keys_and_salts (test_password_security.PasswordSecurity.test_independent_random_keys_and_salts) ... ok
+test_legacy_weak_password_still_recovers_and_migrates (test_password_security.PasswordSecurity.test_legacy_weak_password_still_recovers_and_migrates) ... ok
+test_live_verification_checks_header_on_disk (test_password_security.PasswordSecurity.test_live_verification_checks_header_on_disk) ... ok
+test_rotation_rejects_weak_new_password_without_destination_changes (test_password_security.PasswordSecurity.test_rotation_rejects_weak_new_password_without_destination_changes) ... ok
+test_unicode_phrase_unchanged (test_password_security.PasswordSecurity.test_unicode_phrase_unchanged) ... ok
+test_wrong_defaults_cannot_unlock (test_password_security.PasswordSecurity.test_wrong_defaults_cannot_unlock) ... ok
+test_abrupt_recovery_is_registered_and_reviewable (test_release_security.ReleaseSecurity.test_abrupt_recovery_is_registered_and_reviewable) ... ok
+test_bidi_new_import_rejected_all_controls (test_release_security.ReleaseSecurity.test_bidi_new_import_rejected_all_controls) ... ok
+test_cleanup_api_unconditionally_disabled (test_release_security.ReleaseSecurity.test_cleanup_api_unconditionally_disabled) ... ok
+test_complete_recovery_clears_its_journal (test_release_security.ReleaseSecurity.test_complete_recovery_clears_its_journal) ... ok
+test_directory_export_blocked_even_with_partial_descendant (test_release_security.ReleaseSecurity.test_directory_export_blocked_even_with_partial_descendant) ... ok
+test_existing_writer_blocks_import_without_publication (test_release_security.ReleaseSecurity.test_existing_writer_blocks_import_without_publication) ... ok
+test_journal_purges_only_recorded_identity (test_release_security.ReleaseSecurity.test_journal_purges_only_recorded_identity) ... ok
+test_journal_refuses_active_recovery (test_release_security.ReleaseSecurity.test_journal_refuses_active_recovery) ... ok
+test_journal_refuses_replaced_file (test_release_security.ReleaseSecurity.test_journal_refuses_replaced_file) ... ok
+test_legacy_bidi_recovered_with_safe_name_in_both_readers (test_release_security.ReleaseSecurity.test_legacy_bidi_recovered_with_safe_name_in_both_readers) ... ok
+test_legacy_bidi_rotation_preserves_authenticated_metadata (test_release_security.ReleaseSecurity.test_legacy_bidi_rotation_preserves_authenticated_metadata) ... ok
+test_safe_export_does_not_overwrite_collision (test_release_security.ReleaseSecurity.test_safe_export_does_not_overwrite_collision) ... ok
+test_source_writer_denied_during_import (test_release_security.ReleaseSecurity.test_source_writer_denied_during_import) ... ok
+test_unicode_normalization_not_silently_applied (test_release_security.ReleaseSecurity.test_unicode_normalization_not_silently_applied) ... ok
+
+----------------------------------------------------------------------
+Ran 50 tests in 31.737s
+
+OK
+
+Streaming 80 MiB: pico de asignaciones Python 3.51 MiB (no incluye memoria nativa/Argon2/Qt).

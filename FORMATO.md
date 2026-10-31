@@ -2,13 +2,13 @@
 
 La aplicación es un cliente del repositorio, no una llave vinculada al ordenador. Una copia completa del repositorio y su contraseña permiten desbloquearlo desde otra instalación. No hay secretos en el registro de Windows, identificador de equipo, servidor o licencia. Si se borran todas las copias del repositorio, la contraseña no reconstruye los datos.
 
-Implementación de referencia: `terabox_local.py`. Una aplicación independiente debe implementar exactamente este formato; no basta con usar cualquier cifrado y la misma contraseña. La interoperabilidad con un segundo motor independiente todavía no se ha probado.
+Implementación de referencia: `terabox_local.py`. Una aplicación independiente debe implementar exactamente este formato; no basta con usar cualquier cifrado y la misma contraseña. Se prueba la lectura con recuperar_independiente.py, que no importa el motor ni Qt; esto no equivale a una auditoría externa ni a probar otro escritor.
 
 ## Encabezado
 
 `boveda.json`: JSON UTF-8, máximo 8192 bytes. Campos obligatorios: version=1, vault (32 caracteres hexadecimales minúsculos), salt (16 bytes), ops=3, mem=67108864, hint (hasta 300 caracteres), state, nonce (24 bytes), wrapped (48 bytes). Los campos binarios usan Base64 estándar con relleno. Estados admitidos: ready, migration-incomplete, migration-complete.
 
-Contraseña: UTF-8 sin normalización Unicode; de 1 a 1024 bytes. Argon2id de libsodium, salida de 32 bytes, opslimit=3, memlimit=64 MiB. Esa clave descifra wrapped mediante XChaCha20-Poly1305-IETF. El resultado es la clave de datos de 32 bytes.
+Codificación para desbloquear: UTF-8 sin normalización Unicode; de 1 a 1024 bytes. La política de creación/rotación de v2.1 exige al menos 15 caracteres y rechaza algunos patrones locales; no cambia la codificación ni impide leer contraseñas antiguas. Argon2id de libsodium, salida de 32 bytes, opslimit=3, memlimit=64 MiB. Esa clave descifra wrapped mediante XChaCha20-Poly1305-IETF. El resultado es la clave de datos de 32 bytes.
 
 Datos adicionales del envoltorio: objeto del encabezado sin nonce ni wrapped, serializado como `json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')`. Las claves se ordenan; no se añaden espacios ni salto final. La pista y el estado quedan autenticados. Valide estructura y límites antes de derivar claves.
 
@@ -40,3 +40,9 @@ La verificación exige que el conjunto físico de objetos coincida exactamente c
 El formato v1 sin inventario sigue recuperándose, pero no puede detectar un objeto eliminado en su totalidad. Migrarlo a una bóveda nueva crea v2 y una clave independiente. Conserve encabezado, inventario y todos los objetos al mover/restaurar v2.
 
 recuperar_independiente.py es una segunda implementación de lectura de esta especificación. vectores-publicos.json transporta pequeños repositorios de prueba como pares nombre/base64, con contraseña y SHA-256 de texto claro publicados deliberadamente. Nunca usar sus contraseñas para datos reales. Las pruebas actuales validan el motor escritor contra ese lector, no una segunda implementación escritora ni una auditoría externa.
+
+## Comportamiento de nombres y limpieza en la aplicación v2.1
+
+El formato criptográfico permanece v1/v2. El nombre original autenticado no se normaliza ni se reescribe al abrir o rotar. La importación de nuevos archivos rechaza U+061C, U+200E, U+200F, U+202A–U+202E y U+2066–U+2069. Al mostrar nombres antiguos se usan escapes visibles [U+XXXX]. Ambos lectores exportan esos nombres con prefijo nombre-seguro- y escapes _UXXXX_; si excede 240 unidades UTF-16, emplean archivo-recuperado-<SHA256 del nombre UTF-8>.bin. Se rechazan colisiones sin sobrescribir. Los nombres internacionales legítimos sin esos controles se mantienen. Esta política de presentación/exportación es independiente del nombre autenticado.
+
+La limpieza de bóvedas anteriores está deshabilitada incondicionalmente en v2.1. rotacion.tbr no autoriza borrados. El registro local de parciales de la interfaz no forma parte del repositorio, no contiene secretos de descifrado y no es necesario para restaurar en otro equipo.

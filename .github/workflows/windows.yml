@@ -12,14 +12,14 @@ jobs:
           python-version: '3.14'
           architecture: x64
       - run: python -m pip install -r requirements.txt PyInstaller==6.22.3 pyinstaller-hooks-contrib==2026.9
-      - run: python -m unittest -v test_vault test_ui test_improvements
+      - run: python -m unittest -v test_vault test_ui test_improvements test_password_security test_release_security
         env:
           QT_QPA_PLATFORM: offscreen
       - run: python -m PyInstaller --noconfirm --distpath dist --workpath build BovedaLocal.spec
       - name: Test frozen application
         shell: pwsh
         run: |
-          $exe = (Resolve-Path dist/InfinityMedBoveda-v2.exe).Path
+          $exe = (Resolve-Path dist/InfinityMedBoveda-v2.1.exe).Path
           $result = Join-Path $env:RUNNER_TEMP 'infinity-selftest.json'
           $p = Start-Process -FilePath $exe -ArgumentList @('--smoke-test', $result) -PassThru -WindowStyle Hidden
           if (-not $p.WaitForExit(60000)) { throw 'Executable self-test timeout' }

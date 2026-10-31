@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QAbstractItemView, QProgressBar,
     QFileDialog, QInputDialog, QLineEdit, QMessageBox, QMenu, QTreeView, QFileSystemModel, QFrame, QStyle, QFileIconProvider,
 )
-from terabox_local import Vault, VaultError, read_header, safe_path, outside, inside, check_cancel
+from terabox_local import Vault, VaultError, read_header, safe_path, outside, inside, check_cancel, validate_new_password
+from terabox_local import display_name
+from recovery_history import RecoveryHistory
 
 
 def folder_icon(color):
@@ -40,14 +42,26 @@ class ColoredFolders(QFileIconProvider):
 class RecoveryModel(QFileSystemModel):
     def flags(self, index):
         name = self.fileName(index)
-        if name.startswith((".tblocal-", ".recuperar-")) or name.endswith(".partial"):
+        if name.startswith((".tblocal-", ".recuperar-")) or name.endswith(".partial") or self.fileInfo(index).isSymLink():
             return Qt.ItemFlag.NoItemFlags
-        return super().flags(index)
+        flags=super().flags(index)
+        if self.isDir(index):flags &= ~Qt.ItemFlag.ItemIsDragEnabled
+        return flags
+
+    def mimeData(self,indexes):
+        allowed=[i for i in indexes if i.column()==0 and self.flags(i)&Qt.ItemFlag.ItemIsDragEnabled]
+        return super().mimeData(allowed)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
             return {0: "Nombre", 1: "Tamaño", 2: "Tipo", 3: "Modificado"}.get(section)
         return super().headerData(section, orientation, role)
+
+    def data(self,index,role=Qt.ItemDataRole.DisplayRole):
+        value=super().data(index,role)
+        if index.column()==0 and role==Qt.ItemDataRole.DisplayRole and isinstance(value,str):
+            return display_name(value)
+        return value
 
 
 def local_drop_paths(mime):
@@ -114,8 +128,9 @@ class FileList(QListWidget):
 
 
 class Window(QWidget):
-    def __init__(self):
+    def __init__(self, journal=None):
         super().__init__()
+        self.journal=journal or RecoveryHistory()
         self.setWindowTitle("Infinity Med · Bóveda local")
         self.resize(1180, 760)
         self.setStyleSheet("""
@@ -133,6 +148,7 @@ class Window(QWidget):
         QProgressBar::chunk {background: #0078d4;}
         """)
         self.vault = None
+        self.weak_password = False
         self.folder = None
         self.cloud_root = None
         self.staging = None
@@ -230,7 +246,7 @@ class Window(QWidget):
         row = QHBoxLayout()
         layout.addLayout(row)
         self.button(row, "Rotar a una bóveda nueva…", self.migrate)
-        self.button(row, "Limpiar versión anterior…", self.cleanup)
+        self.button(row, "Revisar recuperaciones incompletas…", self.review_partials)
         cancel_button = QPushButton("Cancelar")
         cancel_button.clicked.connect(self.cancel.set)
         row.addWidget(cancel_button)
@@ -242,6 +258,9 @@ class Window(QWidget):
         note = QLabel("Para arrastrar hacia Windows, prepare primero los archivos. Se conservarán descifrados en la carpeta de recuperación que elija. No hay recuperación de contraseña.")
         note.setWordWrap(True)
         layout.addWidget(note)
+        if self.journal.path.exists():
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0,lambda:self.safe_action(self.notice_partials))
 
     def button(self, row, text, callback):
         b = QPushButton(text)
@@ -308,7 +327,7 @@ class Window(QWidget):
             self.update_paths()
 
     def password(self, title, twice=False):
-        prompt = "Use una frase larga y única (12 o más caracteres recomendados):" if twice else "Contraseña del repositorio:"
+        prompt = "Nueva contraseña: mínimo 15 caracteres. Use una frase larga y única:" if twice else "Contraseña del repositorio:"
         value, ok = QInputDialog.getText(self, title, prompt, QLineEdit.EchoMode.Password)
         if not ok:
             return None
@@ -318,11 +337,34 @@ class Window(QWidget):
                 return None
             if value != repeat:
                 raise VaultError("Las contraseñas no coinciden.")
+            validate_new_password(value)
         return value
 
     def hint(self):
         text, ok = QInputDialog.getText(self, "Pista opcional", "Se guarda legible. No revele la contraseña:")
         return text if ok else None
+
+    def notice_partials(self):
+        if self.busy:return
+        def done(paths):
+            if paths:self.status.setText(f"Hay {len(paths)} recuperaciones pendientes de revisar. Puede haber otra instancia activa; no se eliminará nada automáticamente.")
+        self.start(self.journal.pending,done)
+
+    def review_partials(self):
+        def show(paths):
+            if not paths:
+                self.status.setText('No hay parciales propios registrados pendientes de revisión.')
+                return
+            question=QMessageBox(self)
+            question.setWindowTitle('Recuperaciones incompletas')
+            question.setText(f'Se encontraron {len(paths)} parciales propios. ¿Desea eliminarlos? Los archivos completos se conservan.')
+            question.setInformativeText('La eliminación se rechazará si hay una operación activa o cambia la identidad del archivo. No es borrado forense. Revise las rutas en Detalles.')
+            question.setDetailedText('\n'.join(map(str,paths)))
+            question.setStandardButtons(QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
+            question.setDefaultButton(QMessageBox.StandardButton.No)
+            if question.exec()==QMessageBox.StandardButton.Yes:
+                self.start(lambda:self.journal.purge(paths),lambda _:self.status.setText('Parciales registrados eliminados; archivos completos conservados.'))
+        self.start(self.journal.pending,show)
 
     def require(self):
         if self.vault is None:
@@ -393,9 +435,15 @@ class Window(QWidget):
         p = self.password("Desbloquear")
         if p is not None:
             folder = self.folder
-            self.start(lambda: Vault.unlock(folder, p), self.opened)
+            try:
+                validate_new_password(p)
+                weak = False
+            except VaultError:
+                weak = True
+            self.start(lambda: Vault.unlock(folder, p), lambda v: self.opened(v, weak))
 
-    def opened(self, vault):
+    def opened(self, vault, weak_password=False):
+        self.weak_password = weak_password
         if self.cloud_root and inside(vault.folder, self.cloud_root):
             vault.set_cloud_root(self.cloud_root)
         else:
@@ -441,7 +489,7 @@ class Window(QWidget):
         def show(rows):
             self.files.clear()
             for entry, meta in rows:
-                item = QListWidgetItem(f"{meta['name']}    ·    {meta['size']:,} bytes")
+                item = QListWidgetItem(f"{display_name(meta['name'])}    ·    {meta['size']:,} bytes")
                 item.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
                 item.setData(Qt.ItemDataRole.UserRole, entry)
                 self.files.addItem(item)
@@ -449,6 +497,8 @@ class Window(QWidget):
             state = {"ready": "Lista", "migration-incomplete": "Migración incompleta", "migration-complete": "Migración verificada"}[v.header["state"]]
             version = " · Formato antiguo sin inventario" if v.header["version"] == 1 else ""
             self.status.setText(f"{len(rows)} archivos · {state}{version}. Guardado localmente; subida pendiente de comprobar en su cliente de nube.")
+            if self.weak_password:
+                self.status.setText("Contraseña antigua débil: puede recuperar sus archivos; rote a una bóveda con una frase larga y única. " + self.status.text())
         self.start(task, show)
 
     def add(self):
@@ -484,7 +534,7 @@ class Window(QWidget):
         def task():
             result = {}
             for entry in entries:
-                path = v.restore(entry, dest, self.report, self.cancel)
+                path = v.restore(entry, dest, self.report, self.cancel, journal=self.journal)
                 result[entry] = path
             return result
         def done(result):
@@ -509,9 +559,9 @@ class Window(QWidget):
     def copy_files(self):
         indexes = self.recovered.selectionModel().selectedRows(0)
         if not indexes:
-            raise VaultError("Seleccione archivos o carpetas del panel Desencriptados.")
+            raise VaultError("Seleccione archivos del panel Desencriptados. Las carpetas se pueden navegar, pero no exportar.")
         if any(not self.recovered_model.flags(i) & Qt.ItemFlag.ItemIsDragEnabled for i in indexes):
-            raise VaultError("Los archivos parciales de operación no se pueden copiar ni arrastrar.")
+            raise VaultError("Sólo puede copiar archivos individuales completos; no carpetas ni parciales.")
         mime = QMimeData()
         mime.setUrls([QUrl.fromLocalFile(self.recovered_model.filePath(i)) for i in indexes])
         QApplication.clipboard().setMimeData(mime)
@@ -540,13 +590,7 @@ class Window(QWidget):
         self.start(lambda: v.migrate(current, dest, new, hint, stage, progress, self.cancel), self.opened)
 
     def cleanup(self):
-        v = self.require()
-        answer = QMessageBox.question(self, "Comprobar subida en TeraBox", "¿El cliente TeraBox ya mostró que TODOS los archivos de la NUEVA bóveda se cargaron y usted lo comprobó?\n\nSe verificará otra vez toda la nueva copia local antes de eliminar exclusivamente los archivos antiguos registrados. La app no verifica la nube. Papelera y versiones pueden conservar copias.")
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        p = self.password("Contraseña de la bóveda nueva")
-        if p is not None:
-            self.start(lambda: v.cleanup_previous(p, True, self.cancel), lambda _: self.status.setText("Limpieza LOCAL finalizada. Propagación de cambios y borrados depende de TeraBox."))
+        raise VaultError('La limpieza de bóvedas anteriores está deshabilitada. Consérvelas; las recuperaciones incompletas se revisan por separado.')
 
     def closeEvent(self, event):
         if self.busy:
@@ -575,13 +619,18 @@ def run_gui():
                         (base / name).mkdir()
                     source = base / "prueba.txt"
                     source.write_bytes(b"prueba binario" * 90000)
-                    v = Vault.create(base / "old", "actual", "", base / "stage")
+                    v = Vault.create(base / "old", "frase sintetica original de arranque", "", base / "stage")
                     entry = v.add(source, base / "stage")
-                    new = v.migrate("actual", base / "new", "nueva", "", base / "stage")
+                    new = v.migrate("frase sintetica original de arranque", base / "new", "frase sintetica nueva de arranque", "", base / "stage")
                     path = new.restore(new.entries()[0], base / "out")
                     assert path.read_bytes() == source.read_bytes()
-                    new.cleanup_previous("nueva", True)
-                    result.update({"crypto_roundtrip": True, "full_rotation": True, "safe_cleanup": True})
+                    new.verify()
+                    try:
+                        new.cleanup_previous("frase sintetica nueva de arranque", True)
+                    except VaultError:
+                        result['cleanup_disabled']=True
+                    assert (base/'old'/'boveda.json').exists()
+                    result.update({"crypto_roundtrip": True, "full_rotation": True, "previous_vault_preserved": True})
                 code = 0
             except Exception as exc:
                 result["error"] = str(exc)
