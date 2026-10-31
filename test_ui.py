@@ -17,7 +17,7 @@ class UITests(unittest.TestCase):
 
     def test_native_file_urls_import_export_and_clipboard(self):
         with tempfile.TemporaryDirectory() as temp:
-            p = Path(temp) / "prueba español.txt"
+            p = Path(temp).resolve() / "prueba español.txt"
             p.write_bytes(b"datos")
             mime = QMimeData()
             mime.setUrls([QUrl.fromLocalFile(str(p))])

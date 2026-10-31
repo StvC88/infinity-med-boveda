@@ -17,7 +17,7 @@ PASSWORD='Frase larga para pruebas locales independientes'
 class ReleaseSecurity(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
-        self.root=Path(self.tmp.name)
+        self.root=Path(self.tmp.name).resolve()
         self.repo,self.stage,self.out=[self.root/name for name in ('repo','stage','out')]
         for path in (self.repo,self.stage,self.out):path.mkdir()
         self.v=t.Vault.create(self.repo,PASSWORD,'',self.stage)
