@@ -38,6 +38,12 @@ class ColoredFolders(QFileIconProvider):
 
 
 class RecoveryModel(QFileSystemModel):
+    def flags(self, index):
+        name = self.fileName(index)
+        if name.startswith((".tblocal-", ".recuperar-")) or name.endswith(".partial"):
+            return Qt.ItemFlag.NoItemFlags
+        return super().flags(index)
+
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
             return {0: "Nombre", 1: "Tamaño", 2: "Tipo", 3: "Modificado"}.get(section)
@@ -333,6 +339,7 @@ class Window(QWidget):
         for b in self.controls:
             b.setEnabled(False)
         self.files.setEnabled(False)
+        self.recovered.setEnabled(False)
         self.last_progress = 0
         def run():
             try:
@@ -356,6 +363,7 @@ class Window(QWidget):
         for b in self.controls:
             b.setEnabled(True)
         self.files.setEnabled(True)
+        self.recovered.setEnabled(True)
         if error:
             self.status.setText("Interrumpida. Se conservan los archivos completos. Revise el destino; una migración fallida sigue marcada incompleta.")
             self.error(error)
@@ -502,6 +510,8 @@ class Window(QWidget):
         indexes = self.recovered.selectionModel().selectedRows(0)
         if not indexes:
             raise VaultError("Seleccione archivos o carpetas del panel Desencriptados.")
+        if any(not self.recovered_model.flags(i) & Qt.ItemFlag.ItemIsDragEnabled for i in indexes):
+            raise VaultError("Los archivos parciales de operación no se pueden copiar ni arrastrar.")
         mime = QMimeData()
         mime.setUrls([QUrl.fromLocalFile(self.recovered_model.filePath(i)) for i in indexes])
         QApplication.clipboard().setMimeData(mime)

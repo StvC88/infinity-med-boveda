@@ -4,6 +4,7 @@
 
 - Logo Infinity Med del material aportado, adaptado sobre transparencia, en encabezado e icono; texto regular Segoe UI, carpetas de colores, encabezados en español y rutas completas sólo en la ayuda emergente.
 - Bloquear oculta el explorador recuperado, limpia selección y búsqueda y retira la clave activa. Conserva los archivos finales ya recuperados; no pretende borrarlos ni retirarlos de otras aplicaciones.
+- Los parciales de operación no permiten selección/arrastre individual desde Desencriptados y el panel queda deshabilitado durante operaciones.
 - Botón Verificar repositorio: recorre y autentica cada archivo, comprueba fin y tamaño, y compara con un inventario autenticado. No produce texto claro en disco.
 - Nuevo encabezado v2 con inventario obligatorio. Detecta objetos desaparecidos, objetos extra e inventario eliminado o alterado. La app abre encabezados v1 existentes y avisa que carecen de inventario. Migrar a otra bóveda genera v2 y clave nueva.
 - Publicación del objeto y del inventario con temporales cifrados fuera de nube. Si una interrupción deja un objeto completo sin registrar, la verificación lo detecta y bloquea nuevas importaciones; no elimina el objeto y puede recuperarse individualmente. No hay reparación automática ni una transacción distribuida con la nube.
@@ -14,7 +15,7 @@
 
 ## Verificación local
 
-30 pruebas aprobadas; última suite completa: 23,203 segundos, Windows 11 x64 / Python 3.14.6 / PyNaCl 1.6.2 / PySide6 6.10.2. Prueba streaming 80 MiB: pico de asignaciones Python 3,38 MiB; excluye memoria nativa, Qt y Argon2id. Se renderizó e inspeccionó la interfaz real con archivos sintéticos. La prueba del ejecutable final se registra en `prueba-exe-v2.json` cuando termina.
+31 pruebas aprobadas; última suite completa: 29,106 segundos, Windows 11 x64 / Python 3.14.6 / PyNaCl 1.6.2 / PySide6 6.10.2. Prueba streaming 80 MiB: pico de asignaciones Python 3,38 MiB; excluye memoria nativa, Qt y Argon2id. Se renderizó e inspeccionó la interfaz real con archivos sintéticos. La prueba del ejecutable final se registra en `prueba-exe-v2.json` cuando termina.
 
 ## Pendiente y límites
 

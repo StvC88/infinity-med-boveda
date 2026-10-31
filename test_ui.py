@@ -55,6 +55,21 @@ class UITests(unittest.TestCase):
             self.assertIsNone(window.vault)
             window.close()
 
+    def test_partial_files_are_not_draggable_or_copyable(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as temp:
+            partial = Path(temp) / ".tblocal-interrumpido.partial"
+            partial.write_bytes(b"incompleto")
+            window = Window()
+            window.vault = SimpleNamespace(cloud_root=Path(temp) / "encrypted")
+            window.show_recovered(Path(temp))
+            index = window.recovered_model.index(str(partial))
+            self.assertTrue(index.isValid())
+            flags = window.recovered_model.flags(index)
+            self.assertFalse(flags & Qt.ItemFlag.ItemIsDragEnabled)
+            self.assertFalse(flags & Qt.ItemFlag.ItemIsSelectable)
+            window.close()
+
     def test_reject_remote_urls_and_folders(self):
         mime = QMimeData()
         mime.setUrls([QUrl("https://example.com/file")])
